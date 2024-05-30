@@ -28,7 +28,7 @@ I can't take credit for the original idea - it comes from [an AWS blog post](htt
 
 This diagram only shows a single Availability Zone to make it simpler too look at. However, I strongly encourage you to operate in multiple AZs for the obvious reason of redundancy. This will increase cost because PrivateLink charges for attachments on a per-AZ basis.
 ## Traffic Flow
-![Traffic flow][traffic-flow.png]
+![Traffic flow](traffic-flow.png)
 ## CloudFormation Template
 ### Notes
 This template deploys resources into two Availability Zones.
