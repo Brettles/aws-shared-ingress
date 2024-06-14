@@ -1,0 +1,14 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Example description
+
+Parameters:
+  ExampleParameter:
+    Type: String
+    Description: Example description
+ 
+Outputs:
+  ExampleOutput:
+    Description: Example description
+    Value: !Ref example.value
+
+Resources:

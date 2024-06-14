@@ -20,28 +20,59 @@ I can't take credit for the original idea - it comes from [an AWS blog post](htt
 - [Amazon Virtual Private Cloud](https://aws.amazon.com/vpc/) (VPC)
 - [Application Load Balancer](https://aws.amazon.com/elasticloadbalancing/application-load-balancer/) (ALB)
 - [Network Load Balancer](https://aws.amazon.com/elasticloadbalancing/network-load-balancer/) (NLB)
-- [AWS WAF](https://aws.amazon.com/waf/)
+- [AWS Web Applicatin Firewall](https://aws.amazon.com/waf/) (WAF)
 - [Amazon CloudFront](https://aws.amazon.com/cloudfront/)
 - [AWS PrivateLink](https://aws.amazon.com/privatelink/)
 ## Network Diagram
 ![Network diagram](network-diagram.png)
 
-This diagram only shows a single Availability Zone to make it simpler too look at. However, I strongly encourage you to operate in multiple AZs for the obvious reason of redundancy. This will increase cost because PrivateLink charges for attachments on a per-AZ basis.
+This diagram only shows a single Availability Zone to make it simpler too look at. However, I strongly encourage you to operate in multiple AZs for the obvious reason of redundancy. This will increase costs because PrivateLink charges for attachments on a per-AZ basis.
 ## Traffic Flow
 ![Traffic flow](traffic-flow.png)
-## CloudFormation Template
+## CloudFormation Templates
+There are four CloudFormation templates - deploy them in the following order:
+1. [Ingress VPC](cfn-ingress-vpc.yaml)
+2. [Application VPC](cfn-application-vpc.yaml)
+3. [Applicationn ingress configuration](cfn-ingress-application.yaml)
+4. [Application workload](cfn-application-workload.yaml)
+### Ingress VPC Template
+This template creates the ingress VPC and Internet Gateway.
+
+** TODO **:  Do we create the default route table? Can the app ingress config template pick that up automatically if we don't assign a route table to the public subnet?
+
+Deploy this template only once - it is used by all applications.
+### Application VPC Template
+This template creates the application VPC, a NLB for distributing traffic to the workload and creates the PrivateLink endpoint service that will be shared with the ingress VPC.
+
+** TODO **: How much of the sharing/accepting can we automate without having to use a custom resource? Update comments here once that is done.
+
+Deploy this template once per application. It would normally be deployed in a separate account to the ingress VPC but it will work equally well in the same account (see the FAQ below).
+### Application Ingress Configuration Template
+This template deploys a seperate public and private subnet for each application in the ingress VPC. You could combine these into a single public and single private subnet if you wish. Doing so would use less IP addresses.
+
+Once that is done, it creates the ALB; creates and assigns a security group to the ALB; sets up a CloudFront distribution with an origin pointing to the ALB; secures the connection to the ALB by using a prefix group and a custom header [as per the documentation](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/restrict-access-to-load-balancer.html).
+
+** TODO **: How does the ALB know about the IP targets that PrivateLink presents? Do we use the PL identifier for a lookup?
+
+You will need to specify the VPC id of the ingress VPC that was created in the previous step. You will also need to name the application. This isn't particularly important except that the name is used as a key to ensure that CloudFront and ALB communicate securely.
+
+Deploy this template once per application. It is deployed in the same account and region as the Ingress VPC Template.
+### Application Workload Template
+This template is separate because in a production environment you are probably going to have some other workload. You might even combin the application VPC and workload templates.
+
+The template deploys an auto-scaling group of two web servers running on t3.nano instances spread across two availability zones. Instead of EC2 you might use containers with [Amazon Elastic Container Service](https://aws.amazon.com/ecs/), [Amazon Elastic Kubernetes Service](https://aws.amazon.com/eks/) or [AWS Fargate](https://aws.amazon.com/fargate/).
+
+You will need to specify the NLB ARN that was deployed using the Application VPC template so that the auto-scaling group can register the web servers as targets.
+
+Deploy this template once per application.
 ### Notes
-This template deploys resources into two Availability Zones.
+The CloudFormation templates deploy resources into two Availability Zones. When operating in multiple accounts (and therefore creating subnets in different VPCs in those accounts), make sure that you are using the same Availability Zones by ccross-referencing the Availability Zone identifiers. You can see these by looking at the subnet details in the AWS console or by using the AWS CLI and running `aws ec2 describe-availability-zones`.
 
-The template deploys a seperate public and private subnet for each application in the ingress VPC. You could combine these into a single public and single private subnet if you wish. Doing so would use less IP addresses.
-
-While the WAF components for the ALB are shown "beside" the ALB themselves, in reality they are deployed "on" the ALB.
-
-The template only deploys a single EC2 instance acting as a web server. This is intended as a demonstration only but in a production environment you would definitely be using an auto-scaling group for your workload. Instead of EC2 you might use containers with [Amazon Elastic Container Service](https://aws.amazon.com/ecs/), [Amazon Elastic Kubernetes Service](https://aws.amazon.com/eks/) or [AWS Fargate](https://aws.amazon.com/fargate/).
+While the WAF components for the ALB are shown in the diagram as being "beside" the ALBs, in reality they are deployed "on" each ALB.
 
 This template only deploys a HTTP endpoint but the design fully supports (and I strongly recommend) that you use HTTPS because encryption is a good (and should be mandatory!) thing. You can incorporate HTTPS into the CloudFormation template - I have not done so in this case because it requires you to confirm ownership of domains which is not practical as a demonstration.
 
-HTTPS connections require valid certificates. You should use [AWS Certificate Manager](https://aws.amazon.com/certificate-manager/) to deploy certificates for CloudFront and ALB because it is free and it will automatically rotate your certificates for you.
+HTTPS connections require valid certificates. In a production environment you would be using your own domain name and so you should use [AWS Certificate Manager](https://aws.amazon.com/certificate-manager/) to deploy certificates for CloudFront and ALB because it is free and it will automatically rotate your certificates for you.
 
 Given that there will be multiple WAF instances deployed (one for each ALB and one for CloudFront) you should also consider using [AWS Firewall Manager](https://aws.amazon.com/firewall-manager/) to centrally manage the rules.
 ## Frequently Asked Questions
@@ -61,6 +92,8 @@ When application instances initiate connections out of their VPC the traffic wil
 [Here's a blog post](https://aws.amazon.com/blogs/networking-and-content-delivery/creating-a-single-internet-exit-point-from-multiple-vpcs-using-aws-transit-gateway/) describing how to set up a single internet exit point using Transit Gateway.
 ### Does this work across multiple accounts?
 Yes. The intention is that the network or security team will control the ingress VPC; but the application teams each have their own separate VPCs. Those VPCs can (and should be!) in different accounts. Using different accounts greatly simplifies permissions; eestablishes firm boundaries around each application (in terms of security and billing); reduces administrative blast radius; and allows each application to operate independently in terms of AWS account limits.
+### Is using multiple accounts mandatory?
+No, this solution works equally well in a single account but it makes more sense to use multiple accounts to maintain administrative separation as per the question/answer above. If you were running in a single account you might as well run all the resources in a single VPC which would be a lot less expensive. But then it is avoiding the point of this exercise which is to have separation of administrative duties.
 ### Can I inspect the ingress traffic with my firewall?
 Yes, you can. But you should think carefully before doing this. It can lead to the situation where the firewalls are a single shared point of failure for all of the applications.
 
