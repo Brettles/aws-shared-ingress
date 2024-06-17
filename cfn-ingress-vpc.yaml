@@ -1,14 +1,135 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: Example description
+Description: Ingress VPC template - deploys the VPC, subnets, Internet Gateway and routing.
 
-Parameters:
-  ExampleParameter:
-    Type: String
-    Description: Example description
- 
 Outputs:
-  ExampleOutput:
-    Description: Example description
-    Value: !Ref example.value
+  SharedIngressVPC:
+    Description: Shared ingress VPC id
+    Value: !Ref IngressVPC
+    Export:
+      Name: SharedIngressVpcId
+  PublicSubnetOne:
+    Description: Public subnet one id
+    Value: !Ref PublicSubnetOne
+    Export:
+      Name: SharedIngressPublicSubnetOneId
+  PublicSubnetTwo:
+    Description: Public subnet two id
+    Value: !Ref PublicSubnetTwo
+    Export:
+      Name: SharedIngressPublicSubnetTwoId
+  PrivateSubnetOne:
+    Description: Private subnet one id
+    Value: !Ref PrivateSubnetOne
+    Export:
+      Name: SharedIngressPrivateSubnetOneId
+  PrivateSubnetTwo:
+    Description: Private subnet two id
+    Value: !Ref PrivateSubnetTwo
+    Export:
+      Name: SharedIngressPrivateSubnetTwoId
 
 Resources:
+  IngressVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.254.0.0/22
+      EnableDnsSupport: True
+      EnableDnsHostnames: True
+      InstanceTenancy: default
+      Tags:
+      - Key: Name
+        Value: SharedIngressVPC
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: Name
+        Value: SharedIngressVPC
+
+  InternetGatewayAttach:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref IngressVPC
+      InternetGatewayId: !Ref InternetGateway
+
+  InternetRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+      RouteTableId: !Ref PublicSubnetRouteTable
+
+  PublicSubnetRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref IngressVPC
+      Tags:
+      - Key: Name
+        Value: SharedIngressVPC
+
+  PublicSubnetOne:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref IngressVPC
+      AvailabilityZone: !Select
+        - 0
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      CidrBlock: 10.254.0.0/24
+      Tags:
+      - Key: Name
+        Value: SharedIngressVPC-PublicSubnetOne
+
+  PublicSubnetTwo:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref IngressVPC
+      AvailabilityZone: !Select
+        - 1
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      CidrBlock: 10.254.1.0/24
+      Tags:
+      - Key: Name
+        Value: SharedIngressVPC-PublicSubnetTwo
+
+  PrivateSubnetOne:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref IngressVPC
+      AvailabilityZone: !Select
+        - 0
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      CidrBlock: 10.254.2.0/24
+      Tags:
+      - Key: Name
+        Value: SharedIngressVPC-PrivateSubnetOne
+
+  PrivateSubnetTwo:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref IngressVPC
+      AvailabilityZone: !Select
+        - 1
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      CidrBlock: 10.254.3.0/24
+      Tags:
+      - Key: Name
+        Value: SharedIngressVPC-PrivateSubnetTwo
+
+  PublicSubnetOneRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    DependsOn:
+    - PublicSubnetOne
+    - PublicSubnetRouteTable
+    Properties:
+      RouteTableId: !Ref PublicSubnetRouteTable
+      SubnetId: !Ref PublicSubnetOne
+
+  PublicSubnetTwoRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    DependsOn:
+    - PublicSubnetTwo
+    - PublicSubnetRouteTable
+    Properties:
+      RouteTableId: !Ref PublicSubnetRouteTable
+      SubnetId: !Ref PublicSubnetTwo
