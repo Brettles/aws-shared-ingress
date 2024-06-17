@@ -131,8 +131,8 @@ Resources:
       VpcId: !ImportValue SharedIngressVpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
+          FromPort: 80
+          ToPort: 80
           SourcePrefixListId:  !FindInMap [CloudFrontPrefixLists, !Ref 'AWS::Region', PrefixList]
       Tags:
       - Key: Name
@@ -158,8 +158,8 @@ Resources:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
       LoadBalancerArn: !Ref ALB
-      Port: 443
-      Protocol: HTTPS
+      Port: 80
+      Protocol: HTTP
       DefaultActions:
       - Order: 1
         Type: forward
@@ -182,14 +182,14 @@ Resources:
       Name: !Sub '${ApplicationName}-Ingress'
       VpcId: !ImportValue SharedIngressVpcId
       IpAddressType: ipv4
-      Port: 443
-      Protocol: HTTPS
+      Port: 80
+      Protocol: HTTP
       TargetType: ip
       Targets:
       - Id: !Ref EndpointIPAddressOne
-        Port: 443
+        Port: 80
       - Id: !Ref EndpointIPAddressTwo
-        Port: 443
+        Port: 80
       Tags:
       - Key: Name
         Value: !Ref ApplicationName

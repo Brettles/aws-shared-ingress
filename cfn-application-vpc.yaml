@@ -105,7 +105,7 @@ Resources:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
       LoadBalancerArn: !Ref NLB
-      Port: 443
+      Port: 80
       Protocol: TCP
       DefaultActions:
       - Type: forward
@@ -117,7 +117,7 @@ Resources:
       Name: !Ref ApplicationName
       VpcId: !Ref ApplicationVPC
       IpAddressType: ipv4
-      Port: 443
+      Port: 80
       Protocol: TCP
       TargetType: instance
       Tags:

@@ -43,11 +43,15 @@ Deploy this template only once - it is used by all applications.
 ### Application VPC Template
 This template creates the application VPC, a NLB for distributing traffic to the workload and creates the PrivateLink endpoint service that will be shared with the ingress VPC.
 
+For now, the NLB listener is HTTP only because creating certificates and verifying them in a demo is a little bit difficult. In the real world you have a choice - do you run your application via HTTP only (because it's easier) when the traffic is staying with AWS? Perhaps. But it is best practice to perform encryption in transit at all times so it would be far better to use HTTPS for the PrivateLink and NLB parts of this solution.
+
 ** TODO **: How much of the sharing/accepting can we automate without having to use a custom resource? Update comments here once that is done.
 
 Deploy this template once per application. It would normally be deployed in a separate account to the ingress VPC but it will work equally well in the same account (see the FAQ below).
 ### Application Ingress Configuration Template
 This templates creates the ALB for the application; creates and assigns a security group to the ALB; sets up a CloudFront distribution with an origin pointing to the ALB; secures the connection to the ALB by using a prefix group and a custom header [as per the documentation](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/restrict-access-to-load-balancer.html).
+
+For now, the ALB listener is HTTP only because creating certificates and verifying them in a demo is a little bit difficult. But in the real world, the connection from CloudFront to the ALB would be via HTTPS.
 
 ** TODO **: How does the ALB know about the IP targets that PrivateLink presents? Do we use the PL identifier for a lookup?
 
