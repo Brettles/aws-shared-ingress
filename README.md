@@ -35,10 +35,9 @@ There are four CloudFormation templates - deploy them in the following order:
 2. [Application VPC](cfn-application-vpc.yaml)
 3. [Applicationn ingress configuration](cfn-ingress-application.yaml)
 4. [Application workload](cfn-application-workload.yaml)
+None of the templates allow you to choose the IP address range being used; while I could do that and get CloudFormation to divvy up the address space it adds complexity to the template that isn't needed from a demonstration perspective. As it is, the IP ranges chosen are more than is required - if you are short on IP address space then consider using only the moinimum that you require.
 ### Ingress VPC Template
-This template creates the ingress VPC and Internet Gateway.
-
-** TODO **:  Do we create the default route table? Can the app ingress config template pick that up automatically if we don't assign a route table to the public subnet?
+This template creates the ingress VPC and Internet Gateway along with two public subnets and two private subnets with appropriate route tables.
 
 Deploy this template only once - it is used by all applications.
 ### Application VPC Template
@@ -48,13 +47,11 @@ This template creates the application VPC, a NLB for distributing traffic to the
 
 Deploy this template once per application. It would normally be deployed in a separate account to the ingress VPC but it will work equally well in the same account (see the FAQ below).
 ### Application Ingress Configuration Template
-This template deploys a seperate public and private subnet for each application in the ingress VPC. You could combine these into a single public and single private subnet if you wish. Doing so would use less IP addresses.
-
-Once that is done, it creates the ALB; creates and assigns a security group to the ALB; sets up a CloudFront distribution with an origin pointing to the ALB; secures the connection to the ALB by using a prefix group and a custom header [as per the documentation](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/restrict-access-to-load-balancer.html).
+This templates creates the ALB for the application; creates and assigns a security group to the ALB; sets up a CloudFront distribution with an origin pointing to the ALB; secures the connection to the ALB by using a prefix group and a custom header [as per the documentation](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/restrict-access-to-load-balancer.html).
 
 ** TODO **: How does the ALB know about the IP targets that PrivateLink presents? Do we use the PL identifier for a lookup?
 
-You will need to specify the VPC id of the ingress VPC that was created in the previous step. You will also need to name the application. This isn't particularly important except that the name is used as a key to ensure that CloudFront and ALB communicate securely.
+You will need to specify the VPC id of the ingress VPC and select the public subnets that were created in the previous step. You will also need to name the application. This isn't particularly important except that the name is used as a key to ensure that CloudFront and ALB communicate securely. The application name will also be used in the tags.
 
 Deploy this template once per application. It is deployed in the same account and region as the Ingress VPC Template.
 ### Application Workload Template
