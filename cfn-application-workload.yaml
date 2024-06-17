@@ -1,10 +1,10 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: Example description
+Description: Application workload template - deploys an autoscaling group that registered with the load balancer from the application VPC template.
 
 Parameters:
-  ExampleParameter:
+  ApplicationName:
     Type: String
-    Description: Example description
+    Description: Name of this application
  
 Outputs:
   ExampleOutput:
@@ -12,3 +12,9 @@ Outputs:
     Value: !Ref example.value
 
 Resources:
+# autoscaling group
+  # register with nlb
+# instance type: t3.nano
+  # imdsv2
+  # userdata: install httpd and write simple web page with instance id from instance metadata
+# tag everything with the application name
