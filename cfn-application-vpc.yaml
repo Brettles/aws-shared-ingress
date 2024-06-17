@@ -1,14 +1,132 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: Example description
+Description: Application VPC base template - deploys the VPC, subnets, NLB and registers the PrivateLink service.
 
 Parameters:
-  ExampleParameter:
+  ApplicationName:
     Type: String
-    Description: Example description
+    Description: Name of this application
  
 Outputs:
-  ExampleOutput:
-    Description: Example description
-    Value: !Ref example.value
+# privatelink endpoint sevvice id
+  NLBId:
+    Description: Application NLB id
+    Value: !Ref NLB
+    Export:
+      Name: !Sub '${ApplicationName}-NLBId'
+  ApplicationSubnetOne:
+    Description: Application subnet one id
+    Value: !Ref ApplicationSubnetOne
+    Export:
+      Name: !Sub '${ApplicationName}-ApplicationSubnetOneId'
+  ApplicationSubnetTwo:
+    Description: Application subnet two id
+    Value: !Ref ApplicationSubnetTwo
+    Export:
+      Name: !Sub '${ApplicationName}-ApplicationSubnetTwoId'
+  ServiceEndpointName:
+    Description: PrivateLink endpoint name
+    Value: !Sub 'com.amazonaws.vpce.${AWS::Region}.${PrivateLinkService}'
 
 Resources:
+  ApplicationVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.250.0.0/22
+      EnableDnsSupport: True
+      EnableDnsHostnames: True
+      InstanceTenancy: default
+      Tags:
+      - Key: Name
+        Value: !Sub '${ApplicationName}-VPC'
+
+  LoadBalancerSubnetOne:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref ApplicationVPC
+      AvailabilityZone: !Select
+        - 0
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      CidrBlock: 10.250.0.0/24
+      Tags:
+      - Key: Name
+        Value: !Sub '${ApplicationName}-LoadBalancerSubnetOne'
+
+  LoadBalancerSubnetTwo:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref ApplicationVPC
+      AvailabilityZone: !Select
+        - 1
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      CidrBlock: 10.250.1.0/24
+      Tags:
+      - Key: Name
+        Value: !Sub '${ApplicationName}-LoadBalancerSubnetTwo'
+
+  ApplicationSubnetOne:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref ApplicationVPC
+      AvailabilityZone: !Select
+        - 0
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      CidrBlock: 10.250.2.0/24
+      Tags:
+      - Key: Name
+        Value: !Sub '${ApplicationName}-ApplicationSubnetOne'
+
+  ApplicationSubnetTwo:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref ApplicationVPC
+      AvailabilityZone: !Select
+        - 1
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      CidrBlock: 10.250.3.0/24
+      Tags:
+      - Key: Name
+        Value: !Sub '${ApplicationName}-ApplicationSubnetTwo'
+
+  NLB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Ref ApplicationName
+      Type: network
+      Scheme: internal
+      IpAddressType: ipv4
+      Subnets:
+      - !Ref LoadBalancerSubnetOne
+      - !Ref LoadBalancerSubnetTwo
+      Tags:
+      - Key: Name
+        Value: !Ref ApplicationName
+
+  NLBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref NLB
+      Port: 443
+      Protocol: TCP
+      DefaultActions:
+      - Type: forward
+        TargetGroupArn: !Ref NLBTargetGroup
+
+  NLBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Ref ApplicationName
+      VpcId: !Ref ApplicationVPC
+      IpAddressType: ipv4
+      Port: 443
+      Protocol: TCP
+      TargetType: instance
+      Tags:
+      - Key: Name
+        Value: !Ref ApplicationName
+
+  PrivateLinkService:
+    Type: AWS::EC2::VPCEndpointService
+    Properties:
+      AcceptanceRequired: True
+      NetworkLoadBalancerArns:
+      - !Ref NLB
