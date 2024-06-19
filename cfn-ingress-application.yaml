@@ -2,34 +2,23 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: Deploys a stack for each applciation in the ingress VPC - ALB, CloudFront.
 
 Parameters:
-# choice of AZs?
-# ip addresses of privatelink endpoints
   ApplicationName:
     Type: String
     Description: Name of this application
   EndpointServiceName:
     Type: String
     Description: Name of the endpoint service that was created for the application - something like 'com.amazonaws.vpce.ap-southeast-2.vpce-svc-01234567890abcdef'
-  EndpointIPAddressOne:
-    Type: String
-    Description: First IP address of the PrivateLink endpoint for this application
-  EndpointIPAddressTwo:
-    Type: String
-    Description: Second IP address of the PrivateLink endpoint for this application
  
 Outputs:
-#  CloudFrontUrl:
-#    Description: Application CloudFront URL
-#    Value: !Sub 'https://${CloudFrontDistribution.DomainName}/'
-  EndpointIPAddresses:
-    Description: IP addresses for the application PrivateLink endpoint
-    Value: !GetAtt ApplicationEndpoint.NetworkInterfaceIds
+  CloudFrontUrl:
+    Description: Application CloudFront URL
+    Value: !Sub 'https://${CloudFrontDistribution.DomainName}/'
 
 Mappings:
 #
 # If the deployment region is not in the list below, update in manually or
 # run the following command to retrieve all CloudFront prefix list ids for
-# regions that you are opted into:
+# regions that your account is opted into:
 #
 # for REGION in $(aws ec2 describe-regions --query 'Regions[*].RegionName' --output text); do PREFIXLISTID=$(aws ec2 describe-managed-prefix-lists --region ${REGION} --query "PrefixLists[?PrefixListName=='com.amazonaws.global.cloudfront.origin-facing'].PrefixListArn" --output text | cut -f2 -d'/'); echo "    ${REGION}:"; echo "      PrefixList: ${PREFIXLISTID}"; done
 #
@@ -94,40 +83,54 @@ Mappings:
       PrefixList: pl-b6a144df
 
 Resources:
-#  CloudFrontDistribution:
-#    Type: AWS::CloudFront::Distribution
-#    Properties:
-#      DistributionConfig:
-#        Comment: !Ref ApplicationName
-#        ViewerCertificate:
-#          CloudFrontDefaultCertificate: True
-#          MinimumProtocolVersion: TLSv1.2_2021
-#        DefaultRootObject: index.html
-#        Enabled: True
-#        HttpVersion: http2and3
-#        Origins:
-#        - DomainName: !GetAtt ALB.DNSName
-#          Id: !Sub 'Origin-${ApplicationName}'
-#          CustomOriginConfig:
-#            OriginProtocolPolicy: https-only
-#            OriginSSLProtocols:
-#            - TLSv1.2
-#          OriginCustomHeaders:
-#           - HeaderName: X-Shared-Ingress-Secret
-#             HeaderValue: !Ref ApplicationName
-#        DefaultCacheBehavior:
-#          TargetOriginId: !Sub 'Origin-${ApplicationName}'
-#          ViewerProtocolPolicy: allow-all
-#          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
-#        PriceClass: PriceClass_All
-#      Tags:
-#      - Key: Name
-#        Value: !Ref ApplicationName
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: !Ref ApplicationName
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: True
+          MinimumProtocolVersion: TLSv1.2_2021
+        DefaultRootObject: index.html
+        Enabled: True
+        HttpVersion: http2and3
+        Origins:
+        - DomainName: !GetAtt ALB.DNSName
+          Id: !Sub 'Origin-${ApplicationName}'
+          CustomOriginConfig:
+            OriginProtocolPolicy: https-only
+            OriginSSLProtocols:
+            - TLSv1.2
+          OriginCustomHeaders:
+           - HeaderName: X-Shared-Ingress-Secret
+             HeaderValue: !Ref ApplicationName
+        DefaultCacheBehavior:
+          TargetOriginId: !Sub 'Origin-${ApplicationName}'
+          ViewerProtocolPolicy: allow-all
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+        PriceClass: PriceClass_All
+      Tags:
+      - Key: Name
+        Value: !Ref ApplicationName
+
+  EndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub 'Enable access to ${ApplicationName} endpoint'
+      VpcId: !ImportValue SharedIngressVpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+      Tags:
+      - Key: Name
+        Value: !Sub '${ApplicationName}-Endpoint'
 
   ALBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: !Sub 'Enable access to ${ApplicationName}'
+      GroupDescription: !Sub 'Enable access to ${ApplicationName} ALB'
       VpcId: !ImportValue SharedIngressVpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -136,7 +139,7 @@ Resources:
           SourcePrefixListId:  !FindInMap [CloudFrontPrefixLists, !Ref 'AWS::Region', PrefixList]
       Tags:
       - Key: Name
-        Value: !Ref ApplicationName
+        Value: !Sub '${ApplicationName}-ALB'
 
   ALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
@@ -161,20 +164,24 @@ Resources:
       Port: 80
       Protocol: HTTP
       DefaultActions:
-      - Order: 1
-        Type: forward
+      - Type: forward
+        Order: 1
         TargetGroupArn: !Ref ALBTargetGroup
 
-#  ALBListenerRule:
-#    Type: AWS::ElasticLoadBalancingV2::ListenerRule
-#    Properties:
-#      ListernArn: !Ref ALBListener
-#      Actions:
-#      Conditions:
-#      - HttHeaderConfig:
-#        HttpHeaderName: X-Shared-Ingress-Secret
-#        Values:
-#        - !Ref ApplicationName
+  ALBListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref ALBListener
+      Priority: 1
+      Actions:
+      - Type: forward
+        TargetGroupArn: !Ref ALBTargetGroup
+      Conditions:
+      - Field: http-header
+        HttpHeaderConfig:
+          HttpHeaderName: X-Shared-Ingress-Secret
+          Values:
+          - !Ref ApplicationName
 
   ALBTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -185,11 +192,6 @@ Resources:
       Port: 80
       Protocol: HTTP
       TargetType: ip
-      Targets:
-      - Id: !Ref EndpointIPAddressOne
-        Port: 80
-      - Id: !Ref EndpointIPAddressTwo
-        Port: 80
       Tags:
       - Key: Name
         Value: !Ref ApplicationName
@@ -200,3 +202,105 @@ Resources:
       ServiceName: !Ref EndpointServiceName
       VpcEndpointType: Interface
       VpcId: !ImportValue SharedIngressVpcId
+      SecurityGroupIds:
+      - !Ref EndpointSecurityGroup
+      SubnetIds:
+      - !ImportValue SharedIngressPrivateSubnetOneId
+      - !ImportValue SharedIngressPrivateSubnetTwoId
+
+  UpdateALBTargetGroup:
+    Type: AWS::CloudFormation::CustomResource
+    Properties:
+      ServiceToken: !GetAtt LambdaUpdateALBTargetGroup.Arn 
+
+  LambdaRole:
+    Type: AWS::IAM::Role
+    DependsOn:
+    - ApplicationEndpoint
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+            Action:
+            - sts:AssumeRole
+      ManagedPolicyArns:
+      - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      Policies:
+      - PolicyName: Endpoint
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Effect: Allow
+            Action: ec2:DescribeVpcEndpoint
+            Resource: '*'
+# Can we use the ARN for the endpoint here? If so, how do we build the ARN?
+      - PolicyName: ENI
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Effect: Allow
+            Action: ec2:DescribeNetworkInterfaces
+            Resource: '*'
+      - PolicyName: EC2
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Effect: Allow
+            Action: 
+            - elasticloadbalancing:RegisterTargets
+            - elasticloadbalancing:DeregisterTargets
+            Resource: !GetAtt ALBTargetGroup.TargetGroupArn
+
+  LambdaUpdateALBTargetGroup:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Runtime: python3.12
+      Architectures: [arm64]
+      Timeout: 20
+      Role: !GetAtt LambdaRole.Arn
+      Environment:
+        Variables:
+          EndpointId: !Ref ApplicationEndpoint
+          TargetGroupArn: !GetAtt ALBTargetGroup.TargetGroupArn
+      Code:
+        ZipFile: |
+          import boto3
+          import os
+          import logging
+
+          ec2 = boto3.client('ec2')
+          alb = boto3.client('elasticloadbalancingv2')
+
+          endpointId = os.getenv('EndpointId')
+          targetGroupArn = os.getenv('EndpointId')
+
+          logging.basicConfig()
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          
+          def lambda_handler(event, context):
+              logger.info(event)
+              requestId = event['RequestId']
+              stackId = event['StackId']
+
+              logger.info(f'{endpointId=} {targetGroupArn=}'')
+
+              endpointInfo = ec2.describe_vpc_endpoints(Filters=[{'Name':'vpc-endpoint-id', 'Values':[endpointId]}])
+              logger.info(endpointInfo)
+              interfaceIdOne = endpointInfo['VpcEndpoints'][0]['NetworkInterfaceIds'][0]
+              interfaceIdTwo = endpointInfo['VpcEndpoints'][0]['NetworkInterfaceIds'][1]
+
+              interfaceInfo = ec2.describe_network_interfaces(Filters=[{'Name':'network-interface-id', 'Values':[interfaceIdOne, interfaceIdTwo]}])
+              logger.info(interfaceInfo)
+              targetIPAddressOne = interfaceInfo['NetworkInterfaces'][0]['PrivateIpAddress']
+              targetIPAddressTwo = interfaceInfo['NetworkInterfaces'][1]['PrivateIpAddress']
+
+              if event['RequestType'] == 'Create':
+                  alb.register_targets(TargetGroupArn=targetGroupArn, Targets=[{'Id':targetIPAddressOne, 'Port':80}, {'Id':targetIPAddressTwo, 'Port':80}])
+
+              return {'Status':'SUCCESS', 'RequestId':requestId, 'StackId':stackId}
+              # return {'Status':'FAILED', 'RequestId':requestId, 'StackId':stackId}
