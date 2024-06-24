@@ -225,7 +225,7 @@ Resources:
             Service: lambda.amazonaws.com
           Action: sts:AssumeRole
       ManagedPolicyArns:
-      - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      - !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
       Policies:
       - PolicyName: Endpoint
         PolicyDocument:
@@ -281,7 +281,7 @@ Resources:
           logger = logging.getLogger()
           logger.setLevel(logging.INFO)
           
-          def sendResponse(event, context, rawResponse):
+          def sendCfnResponse(event, context, rawResponse):
               responseAsText = json.dumps(rawResponse)
               responseUrl = event['ResponseURL']
 
@@ -317,7 +317,7 @@ Resources:
                   cfnResponse['Status'] = 'FAILED'
                   cfnResponse['Reason'] = str(e)
                   cfnResponse['Data'] = {'Message': 'Resource creation failed'}
-                  sendResponse(event, context, cfnResponse)
+                  sendCfnResponse(event, context, cfnResponse)
 
                   return
 
@@ -332,7 +332,7 @@ Resources:
                   cfnResponse['Status'] = 'FAILED'
                   cfnResponse['Reason'] = str(e)
                   cfnResponse['Data'] = {'Message': 'Resource creation failed'}
-                  sendResponse(event, context, cfnResponse)
+                  sendCfnResponse(event, context, cfnResponse)
 
                   return
 
@@ -346,7 +346,7 @@ Resources:
                       cfnResponse['Status'] = 'FAILED'
                       cfnResponse['Reason'] = str(e)
                       cfnResponse['Data'] = {'Message': 'Resource creation failed'}
-                      sendResponse(event, context, cfnResponse)
+                      sendCfnResponse(event, context, cfnResponse)
 
                       return
 
@@ -356,4 +356,4 @@ Resources:
               else:
                   logger.warning(f'Unhandled request type: {requestType}')
 
-              sendResponse(event, context, cfnResponse)
+              sendCfnResponse(event, context, cfnResponse)
