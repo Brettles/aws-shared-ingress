@@ -222,10 +222,8 @@ Resources:
         Statement:
         - Effect: Allow
           Principal:
-            Service:
-            - lambda.amazonaws.com
-            Action:
-            - sts:AssumeRole
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
       ManagedPolicyArns:
       - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
       Policies:
@@ -234,9 +232,8 @@ Resources:
           Version: 2012-10-17
           Statement:
           - Effect: Allow
-            Action: ec2:DescribeVpcEndpoint
+            Action: ec2:DescribeVpcEndpoints
             Resource: '*'
-# Can we use the ARN for the endpoint here? If so, how do we build the ARN?
       - PolicyName: ENI
         PolicyDocument:
           Version: 2012-10-17
@@ -271,36 +268,92 @@ Resources:
           import boto3
           import os
           import logging
+          import urllib3
+          import json
 
           ec2 = boto3.client('ec2')
-          alb = boto3.client('elasticloadbalancingv2')
+          alb = boto3.client('elbv2')
 
-          endpointId = os.getenv('EndpointId')
-          targetGroupArn = os.getenv('EndpointId')
+          endpointId:str = os.getenv('EndpointId')
+          targetGroupArn:str = os.getenv('TargetGroupArn')
 
           logging.basicConfig()
           logger = logging.getLogger()
           logger.setLevel(logging.INFO)
           
+          def sendResponse(event, context, rawResponse):
+              responseAsText = json.dumps(rawResponse)
+              responseUrl = event['ResponseURL']
+
+              logger.info(f'{responseUrl=} {rawResponse=}')
+
+              http = urllib3.PoolManager()
+              response = http.request('PUT', responseUrl,
+                                      headers={'Content-Length': len(responseAsText)},
+                                      body=responseAsText)
+
+              if response.status != 200:
+                  logger.error(f'CFN request failed: {response.info()}')
+              
           def lambda_handler(event, context):
-              logger.info(event)
-              requestId = event['RequestId']
-              stackId = event['StackId']
+              logger.info(f'{endpointId=} {targetGroupArn=}')
 
-              logger.info(f'{endpointId=} {targetGroupArn=}'')
+              cfnResponse = { 'Status': 'SUCCESS',
+                              'Reason': f'Details in CloudWatch Logs: f{context.log_stream_name}',
+                              'PhysicalResourceId': context.log_stream_name,
+                              'StackId': event['StackId'],
+                              'RequestId': event['RequestId'],
+                              'LogicalResourceId': event['LogicalResourceId'],
+                              'Data': {'Message': 'Resource creation successful'} }
 
-              endpointInfo = ec2.describe_vpc_endpoints(Filters=[{'Name':'vpc-endpoint-id', 'Values':[endpointId]}])
-              logger.info(endpointInfo)
-              interfaceIdOne = endpointInfo['VpcEndpoints'][0]['NetworkInterfaceIds'][0]
-              interfaceIdTwo = endpointInfo['VpcEndpoints'][0]['NetworkInterfaceIds'][1]
+              try:
+                  endpointInfo:dict = ec2.describe_vpc_endpoints(Filters=[{'Name':'vpc-endpoint-id', 'Values':[endpointId]}])
+                  logger.info(endpointInfo)
+                  interfaceIdOne:str = endpointInfo['VpcEndpoints'][0]['NetworkInterfaceIds'][0]
+                  interfaceIdTwo:str = endpointInfo['VpcEndpoints'][0]['NetworkInterfaceIds'][1]
+              except Exception as e:
+                  logger.error(f'Failed to get VPC endpoint information: {e}')
 
-              interfaceInfo = ec2.describe_network_interfaces(Filters=[{'Name':'network-interface-id', 'Values':[interfaceIdOne, interfaceIdTwo]}])
-              logger.info(interfaceInfo)
-              targetIPAddressOne = interfaceInfo['NetworkInterfaces'][0]['PrivateIpAddress']
-              targetIPAddressTwo = interfaceInfo['NetworkInterfaces'][1]['PrivateIpAddress']
+                  cfnResponse['Status'] = 'FAILED'
+                  cfnResponse['Reason'] = str(e)
+                  cfnResponse['Data'] = {'Message': 'Resource creation failed'}
+                  sendResponse(event, context, cfnResponse)
 
-              if event['RequestType'] == 'Create':
-                  alb.register_targets(TargetGroupArn=targetGroupArn, Targets=[{'Id':targetIPAddressOne, 'Port':80}, {'Id':targetIPAddressTwo, 'Port':80}])
+                  return
 
-              return {'Status':'SUCCESS', 'RequestId':requestId, 'StackId':stackId}
-              # return {'Status':'FAILED', 'RequestId':requestId, 'StackId':stackId}
+              try:
+                  interfaceInfo:dict = ec2.describe_network_interfaces(Filters=[{'Name':'network-interface-id', 'Values':[interfaceIdOne, interfaceIdTwo]}])
+                  logger.info(interfaceInfo)
+                  targetIpAddressOne:str = interfaceInfo['NetworkInterfaces'][0]['PrivateIpAddress']
+                  targetIpAddressTwo:str = interfaceInfo['NetworkInterfaces'][1]['PrivateIpAddress']
+              except Exception as e:
+                  logger.error(f'Failed to get ENI information: {e}')
+
+                  cfnResponse['Status'] = 'FAILED'
+                  cfnResponse['Reason'] = str(e)
+                  cfnResponse['Data'] = {'Message': 'Resource creation failed'}
+                  sendResponse(event, context, cfnResponse)
+
+                  return
+
+              requestType:str = event['RequestType']
+              if requestType == 'Create':
+                  try:
+                      alb.register_targets(TargetGroupArn=targetGroupArn, Targets=[{'Id':targetIpAddressOne, 'Port':80}, {'Id':targetIpAddressTwo, 'Port':80}])
+                  except Exception as e:
+                      logger.error(f'Failed to get set ALB targets: {e}')
+
+                      cfnResponse['Status'] = 'FAILED'
+                      cfnResponse['Reason'] = str(e)
+                      cfnResponse['Data'] = {'Message': 'Resource creation failed'}
+                      sendResponse(event, context, cfnResponse)
+
+                      return
+
+              elif requestType == 'Delete':
+                  pass
+
+              else:
+                  logger.warning(f'Unhandled request type: {requestType}')
+
+              sendResponse(event, context, cfnResponse)
