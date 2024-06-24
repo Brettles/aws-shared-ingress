@@ -7,12 +7,21 @@ Parameters:
     Description: Name of this application
  
 Outputs:
-# privatelink endpoint sevvice id
+  VPCId:
+    Description: Application VPC id
+    Value: !Ref ApplicationVPC
+    Export:
+      Name: !Sub '${ApplicationName}-VPCId'
   NLBId:
-    Description: Application NLB id
+    Description: Application NLB ARN
     Value: !Ref NLB
     Export:
-      Name: !Sub '${ApplicationName}-NLBId'
+      Name: !Sub '${ApplicationName}-NLBARN'
+  NLBSecurityGroupId:
+    Description: Application NLB security group id
+    Value: !Ref NLBSecurityGroup
+    Export:
+      Name: !Sub '${ApplicationName}-NLBSGId'
   ApplicationSubnetOne:
     Description: Application subnet one id
     Value: !Ref ApplicationSubnetOne
@@ -123,6 +132,20 @@ Resources:
       Tags:
       - Key: Name
         Value: !Ref ApplicationName
+
+  NLBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub 'Enable access to ${ApplicationName} EC2 instance'
+      VpcId: !Ref ApplicationVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: '0.0.0.0/0'
+      Tags:
+      - Key: Name
+        Value: !Sub '${ApplicationName}-NLB'
 
   PrivateLinkService:
     Type: AWS::EC2::VPCEndpointService

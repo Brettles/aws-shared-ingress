@@ -5,16 +5,94 @@ Parameters:
   ApplicationName:
     Type: String
     Description: Name of this application
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Description: Amazon Linux AMI id
  
-Outputs:
-  ExampleOutput:
-    Description: Example description
-    Value: !Ref example.value
-
 Resources:
-# autoscaling group
-  # register with nlb
-# instance type: t3.nano
-  # imdsv2
-  # userdata: install httpd and write simple web page with instance id from instance metadata
-# tag everything with the application name
+  AutoscalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      MaxSize: 1
+      MinSize: 1
+      LoadBalancerNames:
+      - Fn::ImportValue:
+          !Sub '${ApplicationName}-NLBARN'
+      LaunchTemplate:
+        LaunchTemplateId: !Ref LaunchTemplate
+        Version: !GetAtt LaunchTemplate.LatestVersionNumber
+      VPCZoneIdentifier:
+      - Fn::ImportValue:
+          !Sub '${ApplicationName}-ApplicationSubnetOneId'
+      - Fn::ImportValue:
+          !Sub '${ApplicationName}-ApplicationSubnetTwoId'
+      Tags:
+      - Key: Name
+        Value: !Ref ApplicationName
+        PropagateAtLaunch: True
+
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub 'Enable access to ${ApplicationName} EC2 instances'
+      VpcId:
+        Fn::ImportValue:
+          !Sub '${ApplicationName}-VPCId'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId:
+            Fn::ImportValue:
+              !Sub '${ApplicationName}-ApplicationNLBSGId'
+      Tags:
+      - Key: Name
+        Value: !Sub '${ApplicationName}-EC2'
+
+  LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Metadata:
+      AWS::CloudFormation::Init:
+        config:
+          files:
+            "/home/ec2-user/index.html":
+              content: !Sub |
+                <html>
+                  <head>
+                    <title>Test Page</title>
+                  </head>
+                  <body>
+                    <h1>Nothing to see here - move along</h1>
+                    <div>Although this proves the web server is working</div>
+                  </body>
+                </html>
+              mode: "000644"
+              owner: ec2-user
+              group: ec2-user
+            "/home/ec2-user/crontab.user":
+              content: !Sub | 
+                * * * * * (cd /home/ubuntu; python3 -m http.server 2> /dev/null)
+              mode: "000644"
+              owner: ec2-user
+              group: ec2-user
+    Properties:
+      LaunchTemplateData:
+        ImageId: !Ref LatestAmiId
+        InstanceType: 't3.nano'
+        SecurityGroupIds:
+        - !Ref EC2SecurityGroup
+        BlockDeviceMappings:
+        - DeviceName: "/dev/xvda"
+          Ebs:
+            VolumeType: "gp3"
+            VolumeSize: 8
+            Iops: 3000
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash -xe
+            cd /hoome/ec2-user
+            crontab -u ec2-user crontab.user
+      TagSpecifications:
+      - Tags:
+        - Key: Name
+          Value: !Ref ApplicationName

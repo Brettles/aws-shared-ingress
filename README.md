@@ -46,6 +46,7 @@ This template creates the application VPC, a NLB for distributing traffic to the
 For now, the NLB listener is HTTP only because creating certificates and verifying them in a demo is a little bit difficult. In the real world you have a choice - do you run your application via HTTP only (because it's easier) when the traffic is staying with AWS? Perhaps. But it is best practice to perform encryption in transit at all times so it would be far better to use HTTPS for the PrivateLink and NLB parts of this solution.
 
 ** TODO **: How much of the sharing/accepting can we automate without having to use a custom resource? Update comments here once that is done.
+** Note about the SG being 0.0.0.0/0 to the NLB - traffic only comes via PrivateLink
 
 Deploy this template once per application. It would normally be deployed in a separate account to the ingress VPC but it will work equally well in the same account (see the FAQ below).
 ### Application Ingress Configuration Template
@@ -54,6 +55,8 @@ This templates creates the ALB for the application; creates and assigns a securi
 For now, the ALB listener is HTTP only because creating certificates and verifying them in a demo is a little bit difficult. But in the real world, the connection from CloudFront to the ALB would be via HTTPS.
 
 ** TODO **: How does the ALB know about the IP targets that PrivateLink presents? Do we use the PL identifier for a lookup?
+** Talk about the Lambda custom resource here
+** Requires approval on the application VPC side
 
 You will need to specify the VPC id of the ingress VPC and select the public subnets that were created in the previous step. You will also need to name the application. This isn't particularly important except that the name is used as a key to ensure that CloudFront and ALB communicate securely. The application name will also be used in the tags.
 
@@ -64,6 +67,8 @@ This template is separate because in a production environment you are probably g
 The template deploys an auto-scaling group of two web servers running on t3.nano instances spread across two availability zones. Instead of EC2 you might use containers with [Amazon Elastic Container Service](https://aws.amazon.com/ecs/), [Amazon Elastic Kubernetes Service](https://aws.amazon.com/eks/) or [AWS Fargate](https://aws.amazon.com/fargate/).
 
 You will need to specify the NLB ARN that was deployed using the Application VPC template so that the auto-scaling group can register the web servers as targets.
+
+** Why are we running something every minute?
 
 Deploy this template once per application.
 ### Notes
