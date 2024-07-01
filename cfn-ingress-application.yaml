@@ -98,7 +98,7 @@ Resources:
         - DomainName: !GetAtt ALB.DNSName
           Id: !Sub 'Origin-${ApplicationName}'
           CustomOriginConfig:
-            OriginProtocolPolicy: https-only
+            OriginProtocolPolicy: http-only
             OriginSSLProtocols:
             - TLSv1.2
           OriginCustomHeaders:

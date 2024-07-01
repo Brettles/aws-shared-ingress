@@ -5,6 +5,9 @@ Parameters:
   ApplicationName:
     Type: String
     Description: Name of this application
+  PrivateLinkPrincipals:
+    Type: String
+    Description: Account and role in ingress account who are allowed to connect to this endpoint
  
 Outputs:
   VPCId:
@@ -12,11 +15,11 @@ Outputs:
     Value: !Ref ApplicationVPC
     Export:
       Name: !Sub '${ApplicationName}-VPCId'
-  NLBId:
-    Description: Application NLB ARN
-    Value: !Ref NLB
+  NLBTargetGroupARN:
+    Description: Application NLB TargetGroup ARN
+    Value: !Ref NLBTargetGroup
     Export:
-      Name: !Sub '${ApplicationName}-NLBARN'
+      Name: !Sub '${ApplicationName}-NLBTargetGroupARN'
   NLBSecurityGroupId:
     Description: Application NLB security group id
     Value: !Ref NLBSecurityGroup
@@ -103,6 +106,8 @@ Resources:
       Type: network
       Scheme: internal
       IpAddressType: ipv4
+      SecurityGroups:
+      - !Ref NLBSecurityGroup
       Subnets:
       - !Ref LoadBalancerSubnetOne
       - !Ref LoadBalancerSubnetTwo
@@ -153,3 +158,10 @@ Resources:
       AcceptanceRequired: True
       NetworkLoadBalancerArns:
       - !Ref NLB
+
+  PrivateLinkServicePermissions:
+    Type: AWS::EC2::VPCEndpointServicePermissions
+    Properties:
+      ServiceId: !Ref PrivateLinkService
+      AllowedPrincipals:
+      - !Ref PrivateLinkPrincipals 

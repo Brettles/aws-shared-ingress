@@ -33,9 +33,11 @@ This diagram only shows a single Availability Zone to make it simpler too look a
 There are four CloudFormation templates - deploy them in the following order:
 1. [Ingress VPC](cfn-ingress-vpc.yaml)
 2. [Application VPC](cfn-application-vpc.yaml)
-3. [Applicationn ingress configuration](cfn-ingress-application.yaml)
-4. [Application workload](cfn-application-workload.yaml)
-None of the templates allow you to choose the IP address range being used; while I could do that and get CloudFormation to divvy up the address space it adds complexity to the template that isn't needed from a demonstration perspective. As it is, the IP ranges chosen are more than is required - if you are short on IP address space then consider using only the moinimum that you require.
+3. [Application configuration for the ingress VPC](cfn-ingress-application.yaml)
+4. [Workload deployment for the application VPC](cfn-application-workload.yaml)
+(3) and (4) can be swapped around - the order is unimportant. Note that there is a manual step after deploying (3) - more details below.
+
+None of the templates allow you to choose the IP address range being used; while I could do that and get CloudFormation to divvy up the address space it adds complexity to the template that isn't needed from a demonstration perspective. As it is, the IP ranges chosen are more than is required - if you are short on IP address space then consider using only the minimum range that you require.
 ### Ingress VPC Template
 This template creates the ingress VPC and Internet Gateway along with two public subnets and two private subnets with appropriate route tables.
 
@@ -45,32 +47,41 @@ This template creates the application VPC, a NLB for distributing traffic to the
 
 For now, the NLB listener is HTTP only because creating certificates and verifying them in a demo is a little bit difficult. In the real world you have a choice - do you run your application via HTTP only (because it's easier) when the traffic is staying with AWS? Perhaps. But it is best practice to perform encryption in transit at all times so it would be far better to use HTTPS for the PrivateLink and NLB parts of this solution.
 
-** TODO **: How much of the sharing/accepting can we automate without having to use a custom resource? Update comments here once that is done.
-** Note about the SG being 0.0.0.0/0 to the NLB - traffic only comes via PrivateLink
+You will need to provide two parameters when deploying this template:
 
-Deploy this template once per application. It would normally be deployed in a separate account to the ingress VPC but it will work equally well in the same account (see the FAQ below).
+First is the name of the application. This can be more-or-less anything but it must be compatible with being used in a tag. This means (for example) no spaces. You **must** use the same application name when deploying the workload CloudFormation stack because this stack exports a few values that the workload stack needs to find. Those exports must be unique so the application name has to be unique as well.
+
+Second is principal that is able to request connections to the PrivateLink Endpoint Service that is created by this template. Remember that this is designed to be deployed cross-account so you need to give the account where the ingress VPC is deployed permissions to request connections. This parameter will most likely be the same for every single application VPC that you create because there will only be a single ingress VPC in a single AWS account. The easiest way to do this is to give the entire account (where the ingress VPC is hosted) access by using a principal of `arn:aws:iam::995179897743:root` however this may be too permissive for you. If so, read [the PrivateLink documentation](https://docs.aws.amazon.com/vpc/latest/privatelink/configure-endpoint-service.html#add-remove-permissions) to see how you can further restrict access.
+
+Finally, you will deploy this template once per application. You can have each application in a separate account; or you have multiple applications in a single account - it's completely up to you. For more information see the FAQ below.
 ### Application Ingress Configuration Template
-This templates creates the ALB for the application; creates and assigns a security group to the ALB; sets up a CloudFront distribution with an origin pointing to the ALB; secures the connection to the ALB by using a prefix group and a custom header [as per the documentation](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/restrict-access-to-load-balancer.html).
+This templates adds resources to the ingress VPC. It creates the ALB for the application; creates and assigns a security group to the ALB; sets up a CloudFront distribution with an origin pointing to the ALB; secures the connection to the ALB by using a prefix group and a custom header [as per the documentation](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/restrict-access-to-load-balancer.html); and finally requests a connection to the PrivateLink Endpoint Service that was created in the previous step..
 
 For now, the ALB listener is HTTP only because creating certificates and verifying them in a demo is a little bit difficult. But in the real world, the connection from CloudFront to the ALB would be via HTTPS.
 
-** TODO **: How does the ALB know about the IP targets that PrivateLink presents? Do we use the PL identifier for a lookup?
-** Talk about the Lambda custom resource here
-** Requires approval on the application VPC side
+Once again there are two parameters required when deploying this template:
 
-You will need to specify the VPC id of the ingress VPC and select the public subnets that were created in the previous step. You will also need to name the application. This isn't particularly important except that the name is used as a key to ensure that CloudFront and ALB communicate securely. The application name will also be used in the tags.
+First (again) is the name of the application. This does not have to match the name given in the previous step but it will make sense for you to do so - purely so you can easily identify which components are assigned to which application. But otherwise the name can be completely different - it isn't used to link the two stacks together in any way.
+
+Second is the name of the PrivateLink Endpoint Service that was created by the previous stack. This is given to you as an output by CloudFormation so copy that from the application account and paste it into this field.
+
+At this point there is a manual step. You will need to go back to the account where the application VPC is deployed and accept the PrvateLink Endpoint connection request that has just been made for this application. This is a little inconvenient but it stops connections being maded without actions on both sides (the ingress account and the workload account). If you don't want this to happen, you can automatically accept connection requests by editing the application VPC template and changing the line `AcceptanceRequired: True` to `AcceptanceRequired: False`. There's no huge risk here because the permissions defined as to who can request connections will restrict those connections to the ingress account.
 
 Deploy this template once per application. It is deployed in the same account and region as the Ingress VPC Template.
 ### Application Workload Template
-This template is separate because in a production environment you are probably going to have some other workload. You might even combin the application VPC and workload templates.
+This template is separate because in a production environment you are probably going to have a network or infrastructure team deploy the VPC template and then you'll want to control deployment of the application separately. Keeping them separate also means you can completely change the workload without having to tear down and recreate the inter-VPC and inter-account PrivateLink connections.
 
-The template deploys an auto-scaling group of two web servers running on t3.nano instances spread across two availability zones. Instead of EC2 you might use containers with [Amazon Elastic Container Service](https://aws.amazon.com/ecs/), [Amazon Elastic Kubernetes Service](https://aws.amazon.com/eks/) or [AWS Fargate](https://aws.amazon.com/fargate/).
+The template deploys an auto-scaling group of two web servers running on t3.nano instances spread across two availability zones. Instead of EC2 you might use containers with [Amazon Elastic Container Service](https://aws.amazon.com/ecs/), [Amazon Elastic Kubernetes Service](https://aws.amazon.com/eks/) or [AWS Fargate](https://aws.amazon.com/fargate/). But for a demonstration, this will do.
 
-You will need to specify the NLB ARN that was deployed using the Application VPC template so that the auto-scaling group can register the web servers as targets.
+The only parameter you need to provide is the application name. It is critical that this is the same as the application name provided in step two when the application VPC was deployed. This template looks for resources exported from that stack with specific names.
 
-** Why are we running something every minute?
+The web servers are not particularly intelligent - they provide a single static web page that shows the CloudFormation stack name and the hostname of the EC2 instance that is running. Enough to prove that everything is working correctly.
 
-Deploy this template once per application.
+Deploy this template once per application in the same account as the application VPC template.
+### Testing
+An output from the applicatio ingress configuration template is a CloudFront distribution. Put that into your browser (or use a tool like `curl`) and you will see the static web page being served. Refresh the page and at some point you'll see slightly different output - the hostname will change indicating that the requests are being load-balanced between the two instances.
+
+For troubleshooting, check the target groups in the ingress VPC and in the application VPC and ensure that the targets are marked as `Healthy`.
 ### Notes
 The CloudFormation templates deploy resources into two Availability Zones. When operating in multiple accounts (and therefore creating subnets in different VPCs in those accounts), make sure that you are using the same Availability Zones by ccross-referencing the Availability Zone identifiers. You can see these by looking at the subnet details in the AWS console or by using the AWS CLI and running `aws ec2 describe-availability-zones`.
 
