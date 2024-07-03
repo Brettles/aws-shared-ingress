@@ -3,13 +3,13 @@
 First up, let me say that I am highly opinionated on this topic. I have had dozens (if not hundreds) of conversations with customers about this over the years.
 
 My strong opinion is that customers should not have a shared ingress point. The reasons for wanting them are quite common:
-1. "This is how we did it on premises" - a totally valid claim but in the on premises world there were generally very few (one or two) network links into the customer network from the internet. So it made sense to have shared ingress for everyone b ecause there was (after all) a shared network link where the traffic was delivered. In AWS this is no longer true - from the perspective of customer VPCs the Internet is "just there" and there is more bandwidth available than is practical for a customer to consume.
-2. "I want to inspect everything" which tends to come from security and compliance teams. This is a valid requirement but feeding all traffic through a shared firewall (again, as was done on premises) or firewall cluster means that the firewall(s) become a big central point of failure. If one application is having a good day (i.e. higher levels of traffic than usual) then every other application relying on those firewalls may be having a bad day. If one application is having a bad day (i.e. under DDoS) then everyone is having a bad day.
+1. "This is how we did it on-premises" - a totally valid claim but in the on-premises world there were generally very few (one or two) network links into the customer network from the internet. It made sense to have shared ingress for everyone b ecause there was (after all) a shared network link where the traffic was delivered. In AWS this is no longer true - from the perspective of customer VPCs the Internet is "just there" and there is more bandwidth available than is practical for a customer to consume.
+2. "I want to inspect everything" which tends to come from security and compliance teams. This is a valid requirement but feeding all traffic through a shared firewall (again, as was done on-premises) or firewall cluster means that the firewall(s) become a big central point of failure. If one application is having a good day (i.e. higher levels of traffic than usual) then every other application relying on those firewalls may be having a bad day. If one application is having a bad day (i.e. under DDoS) then everyone is having a bad day.
 3. "Distributed ingress scares me" because the level of cloud maturity and the use of automation witin the customer's team is not at a level where they can effectively administer, monitor and control multiple ingress points. This is a completely valid point and it is why this repo exists.
 
  The other reason I am not a fan of shared ingress is linked to (1) and sometimes (2) - because firewalls are not always in the mix here - and that is that bringing all traffic into a single point introduces a large administrative blast radius. If a user has a bad day and accidentally makes the wrong change they can affect a lot of applications even if that change is not malicious.
  
- And in the AWS world, all accounts comes with limits of some sort. If there are dozens, hundreds or thousands of applications relying on a single ingress point then the likelihood of running into some sort of API limit on the AWS side is high. Splitting the applications up is a wise move.
+ And in the AWS world, all accounts come with limits of some sort. If there are dozens, hundreds or thousands of applications relying on a single ingress point then the likelihood of running into some sort of API limit on the AWS side is high. Splitting the applications up is a wise move.
 
 This repo is a middle ground - it delivers a design compromise where there is some level of shared ingress and centralised control; but it distributes the application traffic in a way that is scalable both in terms of AWS accounts and the ability to give responsibility for each application to different teams.
 
@@ -20,13 +20,13 @@ I can't take credit for the original idea - it comes from [an AWS blog post](htt
 - [Amazon Virtual Private Cloud](https://aws.amazon.com/vpc/) (VPC)
 - [Application Load Balancer](https://aws.amazon.com/elasticloadbalancing/application-load-balancer/) (ALB)
 - [Network Load Balancer](https://aws.amazon.com/elasticloadbalancing/network-load-balancer/) (NLB)
-- [AWS Web Applicatin Firewall](https://aws.amazon.com/waf/) (WAF)
+- [AWS Web Application Firewall](https://aws.amazon.com/waf/) (WAF)
 - [Amazon CloudFront](https://aws.amazon.com/cloudfront/)
 - [AWS PrivateLink](https://aws.amazon.com/privatelink/)
 ## Network Diagram
 ![Network diagram](network-diagram.png)
 
-This diagram only shows a single Availability Zone to make it simpler too look at. However, I strongly encourage you to operate in multiple AZs for the obvious reason of redundancy. This will increase costs because PrivateLink charges for attachments on a per-AZ basis.
+This diagram only shows a single Availability Zone to make it simpler to look at. However, I strongly encourage you to operate in multiple AZs for the obvious reason of redundancy. This will increase costs because PrivateLink charges for attachments on a per-AZ basis.
 ## Traffic Flow
 ![Traffic flow](traffic-flow.png)
 ## CloudFormation Templates
@@ -35,6 +35,7 @@ There are four CloudFormation templates - deploy them in the following order:
 2. [Application VPC](cfn-application-vpc.yaml)
 3. [Application configuration for the ingress VPC](cfn-ingress-application.yaml)
 4. [Workload deployment for the application VPC](cfn-application-workload.yaml)
+
 (3) and (4) can be swapped around - the order is unimportant. Note that there is a manual step after deploying (3) - more details below.
 
 None of the templates allow you to choose the IP address range being used; while I could do that and get CloudFormation to divvy up the address space it adds complexity to the template that isn't needed from a demonstration perspective. As it is, the IP ranges chosen are more than is required - if you are short on IP address space then consider using only the minimum range that you require.
@@ -83,7 +84,7 @@ Deploy this template once per application in the same account as the application
 ### Testing
 An output from the applicatio ingress configuration template is a CloudFront distribution. Put that into your browser (or use a tool like `curl`) and you will see the static web page being served. Refresh the page and at some point you'll see slightly different output - the hostname will change indicating that the requests are being load-balanced between the two instances.
 
-To see if the WAF rules are working, you can use `curl` to send the `block` parameter: `curl https://xxxxxxxxxxx.cloudfront.net/?block=blockme' and that request will be denied. You can also do that in your browser. The reason that the `Amplify` cache profile was chosen for CloudFront was so that requests with different query parameters (such as `block=blockme`) are not cached the same way as requests without those parameters.
+To see if the WAF rules are working, you can use `curl` to send the `block` parameter: `curl https://xxxxxxxxxxx.cloudfront.net/?block=blockme` and that request will be denied. You can also do that in your browser. The reason that the `Amplify` managed cache profile was chosen for CloudFront was so that requests with different query parameters (such as `block=blockme`) are not cached the same way as requests without those parameters.
 
 For troubleshooting, check the target groups in the ingress VPC and in the application VPC and ensure that the targets are marked as `Healthy`. If your WAF rules are not triggering, enable logging and look in CloudWatch Logs.
 ### Notes
