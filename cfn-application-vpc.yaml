@@ -7,7 +7,7 @@ Parameters:
     Description: Name of this application
   PrivateLinkPrincipals:
     Type: String
-    Description: Account and role in ingress account who are allowed to connect to this endpoint
+    Description: Account and role in ingress account who are allowed to connect to this endpoint - see README
  
 Outputs:
   VPCId:

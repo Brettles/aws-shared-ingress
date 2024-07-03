@@ -83,6 +83,13 @@ Mappings:
       PrefixList: pl-b6a144df
 
 Resources:
+#
+# The managed cache policy ids can be seen here: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-managed-cache-policies.html
+#   The one in use is 'Amplify'
+#
+# The managed request policy ids can be seen here: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-managed-origin-request-policies.html
+#   The one in use is 'AllViewer'
+#
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
@@ -107,7 +114,8 @@ Resources:
         DefaultCacheBehavior:
           TargetOriginId: !Sub 'Origin-${ApplicationName}'
           ViewerProtocolPolicy: allow-all
-          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          CachePolicyId: 2e54312d-136d-493c-8eb9-b001f22f67d2
+          OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
         PriceClass: PriceClass_All
       Tags:
       - Key: Name
@@ -207,6 +215,54 @@ Resources:
       SubnetIds:
       - !ImportValue SharedIngressPrivateSubnetOneId
       - !ImportValue SharedIngressPrivateSubnetTwoId
+
+  ALBWAFACL:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: !Sub '${ApplicationName}-ALB'
+      Description: !Sub 'Rules for ${ApplicationName} assigned to ALB'
+      Scope: REGIONAL
+      VisibilityConfig: 
+         CloudWatchMetricsEnabled: True
+         MetricName: !Sub '${ApplicationName}-WAF-ALB'
+         SampledRequestsEnabled: False
+      DefaultAction:
+        Allow: {}
+      CustomResponseBodies:
+        ConnectionRefusedResponse:
+          ContentType: TEXT_HTML
+          Content: <html><body>Not allowed today</body></html>
+      Rules: 
+      - Name: !Sub '${ApplicationName}-SampleRule'
+        Priority: 10
+        Statement:        
+          ByteMatchStatement:
+            FieldToMatch:
+              SingleQueryArgument:
+                Name: 'block'
+            SearchString: 'blockme'
+            TextTransformations:
+            - Priority: 0
+              Type: LOWERCASE
+            PositionalConstraint: EXACTLY
+        Action:
+          Block:
+            CustomResponse:
+              ResponseCode: 403
+              CustomResponseBodyKey: ConnectionRefusedResponse
+        VisibilityConfig:
+          SampledRequestsEnabled: True
+          CloudWatchMetricsEnabled: True
+          MetricName: !Sub '${ApplicationName}-ManagedSampleRule'
+      Tags:
+      - Key: Name
+        Value: !Ref ApplicationName
+      
+  WAFALBAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    Properties:
+      ResourceArn: !Ref ALB
+      WebACLArn: !GetAtt ALBWAFACL.Arn
 
   UpdateALBTargetGroup:
     Type: AWS::CloudFormation::CustomResource
