@@ -5,6 +5,9 @@ Parameters:
   ApplicationName:
     Type: String
     Description: Name of this application
+  CustomHeaderValue:
+    Type: String
+    Description: Enter a unique value for the custom header between CloudFront and ALB
   EndpointServiceName:
     Type: String
     Description: Name of the endpoint service that was created for the application - something like 'com.amazonaws.vpce.ap-southeast-2.vpce-svc-01234567890abcdef'
@@ -110,7 +113,7 @@ Resources:
             - TLSv1.2
           OriginCustomHeaders:
            - HeaderName: X-Shared-Ingress-Secret
-             HeaderValue: !Ref ApplicationName
+             HeaderValue: !Ref CustomHeaderValue
         DefaultCacheBehavior:
           TargetOriginId: !Sub 'Origin-${ApplicationName}'
           ViewerProtocolPolicy: allow-all
@@ -189,7 +192,7 @@ Resources:
         HttpHeaderConfig:
           HttpHeaderName: X-Shared-Ingress-Secret
           Values:
-          - !Ref ApplicationName
+          - !Ref CustomHeaderValue
 
   ALBTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup

@@ -60,11 +60,13 @@ This templates adds resources to the ingress VPC. It creates the ALB for the app
 
 For now, the ALB listener is HTTP only because creating certificates and verifying them in a demo is a little bit difficult. But in the real world, the connection from CloudFront to the ALB would be via HTTPS.
 
-Once again there are two parameters required when deploying this template:
+Once again there are three parameters required when deploying this template:
 
 First (again) is the name of the application. This does not have to match the name given in the previous step but it will make sense for you to do so - purely so you can easily identify which components are assigned to which application. But otherwise the name can be completely different - it isn't used to link the two stacks together in any way.
 
-Second is the name of the PrivateLink Endpoint Service that was created by the previous stack. This is given to you as an output by CloudFormation so copy that from the application account and paste it into this field.
+Second is the value of the custom header that will be used to ensure that only your CloudFront distribution can access the ALB. Ideally this is a randomly generated string that is not used anywhere else.
+
+Third is the name of the PrivateLink Endpoint Service that was created by the previous stack. This is given to you as an output by CloudFormation so copy that from the application account and paste it into this field.
 
 At this point there is a manual step. You will need to go back to the account where the application VPC is deployed and accept the PrvateLink Endpoint connection request that has just been made for this application. This is a little inconvenient but it stops connections being maded without actions on both sides (the ingress account and the workload account). If you don't want this to happen, you can automatically accept connection requests by editing the application VPC template and changing the line `AcceptanceRequired: True` to `AcceptanceRequired: False`. There's no huge risk here because the permissions defined as to who can request connections will restrict those connections to the ingress account.
 
